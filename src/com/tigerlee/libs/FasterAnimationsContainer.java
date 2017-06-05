@@ -15,235 +15,125 @@ import java.lang.ref.SoftReference;
 import java.util.ArrayList;
 
 
-public class FasterAnimationsContainer{
+public class FasterAnimationsContainer {
+
     private class AnimationFrame{
+
         private int mResourceId;
         private int mDuration;
+
         AnimationFrame(int resourceId, int duration){
             mResourceId = resourceId;
             mDuration = duration;
         }
-        public int getResourceId() {
+
+        int getResourceId() {
             return mResourceId;
         }
-        public int getDuration() {
+        int getDuration() {
             return mDuration;
         }
     }
-    private ArrayList<AnimationFrame> mAnimationFrames; // list for all frames of animation
-    private int mIndex; // index of current frame
 
-    private boolean mShouldRun; // true if the animation should continue running. Used to stop the animation
-    private boolean mIsRunning; // true if the animation prevents starting the animation twice
-    private SoftReference<ImageView> mSoftReferenceImageView; // Used to prevent holding ImageView when it should be dead.
-    private Handler mHandler; // Handler to communication with UIThread
-    
-    private Bitmap mRecycleBitmap;  //Bitmap can recycle by inBitmap is SDK Version >=11
+    private ArrayList<AnimationFrame> mAnimationFrames = new ArrayList<>();
+    private int mIndex;
 
-    // Listeners
-    private OnAnimationStoppedListener mOnAnimationStoppedListener;
-    private OnAnimationFrameChangedListener mOnAnimationFrameChangedListener;
+    private boolean mIsRunning;
 
-    private FasterAnimationsContainer(ImageView imageView) {
-        init(imageView);
-    };
+    private SoftReference<ImageView> mSoftReferenceImageView;
+    private Handler mHandler;
 
-    // single instance procedures
-    private static FasterAnimationsContainer sInstance;
+    private Bitmap mRecycleBitmap;
 
-    public static FasterAnimationsContainer getInstance(ImageView imageView) {
-        if (sInstance == null)
-            sInstance = new FasterAnimationsContainer(imageView);
-        sInstance.mRecycleBitmap = null;
-        return sInstance;
-    }
-
-    /**
-     * initialize imageview and frames
-     * @param imageView
-     */
-    public void init(ImageView imageView){
-        mAnimationFrames = new ArrayList<AnimationFrame>();
-        mSoftReferenceImageView = new SoftReference<ImageView>(imageView);
-
+    public FasterAnimationsContainer(ImageView imageView) {
+        mSoftReferenceImageView = new SoftReference<>(imageView);
         mHandler = new Handler();
-        if(mIsRunning == true){
-            stop();
-        }
-
-        mShouldRun = false;
-        mIsRunning = false;
-
-        mIndex = -1;
     }
 
-    /**
-     * add a frame of animation
-     * @param index index of animation
-     * @param resId resource id of drawable 
-     * @param interval milliseconds 
-     */
-    public void addFrame(int index, int resId, int interval){
-        mAnimationFrames.add(index, new AnimationFrame(resId, interval));
-    }
+    public FasterAnimationsContainer init(int[] resIds, int interval){
+        mAnimationFrames.clear();
 
-    /**
-     * add a frame of animation
-     * @param resId resource id of drawable 
-     * @param interval milliseconds
-     */
-    public void addFrame(int resId, int interval){
-        mAnimationFrames.add(new AnimationFrame(resId, interval));
-    }
-
-    /**
-     * add all frames of animation
-     * @param resId resource id of drawable 
-     * @param interval milliseconds
-     */
-    public void addAllFrames(int[] resIds, int interval){
         for(int resId : resIds){
             mAnimationFrames.add(new AnimationFrame(resId, interval));
         }
+
+        mIndex = -1;
+
+//        mRecycleBitmap = null;
+
+        return this;
     }
 
-    /**
-     * remove a frame with index
-     * @param index index of animation
-     */
-    public void removeFrame(int index){
-        mAnimationFrames.remove(index);
-    }
-
-    /**
-     * clear all frames
-     */
-    public void removeAllFrames(){
-        mAnimationFrames.clear();
-    }
-
-    /**
-     * change a frame of animation
-     * @param index index of animation
-     * @param resId resource id of drawable 
-     * @param interval milliseconds
-     */
-    public void replaceFrame(int index, int resId, int interval){
-        mAnimationFrames.set(index, new AnimationFrame(resId, interval));
+    public synchronized void start() {
+        if (mIsRunning) return;
+        mIsRunning = true;
+        mHandler.post(new FramesSequenceAnimation());
     }
 
     private AnimationFrame getNext() {
         mIndex++;
-        if (mIndex >= mAnimationFrames.size())
-            mIndex = 0;
+        if (mIndex >= mAnimationFrames.size()) {
+            mIndex = -1;
+            return null;
+        }
         return mAnimationFrames.get(mIndex);
     }
-    
-    /**
-     * Listener of animation to detect stopped
-     *
-     */
-    public interface OnAnimationStoppedListener{
-        public void onAnimationStopped();
-    }
-    
-    /**
-     * Listener of animation to get index
-     *
-     */
-    public interface OnAnimationFrameChangedListener{
-        public void onAnimationFrameChanged(int index);
-    }
 
-
-    /**
-     * set a listener for OnAnimationStoppedListener
-     * @param listener OnAnimationStoppedListener
-     */
-    public void setOnAnimationStoppedListener(OnAnimationStoppedListener listener){
-        mOnAnimationStoppedListener = listener;
-    }
-
-    /**
-     * set a listener for OnAnimationFrameChangedListener
-     * @param listener OnAnimationFrameChangedListener
-     */
-    public void setOnAnimationFrameChangedListener(OnAnimationFrameChangedListener listener){
-        mOnAnimationFrameChangedListener = listener;
-    }
-
-    /**
-     * Starts the animation
-     */
-    public synchronized void start() {
-        mShouldRun = true;
-        if (mIsRunning)
-            return;
-        mHandler.post(new FramesSequenceAnimation());
-    }
-
-    /**
-     * Stops the animation
-     */
-    public synchronized void stop() {
-        mShouldRun = false;
-    }
-
-    private class FramesSequenceAnimation implements Runnable{
+    private class FramesSequenceAnimation implements Runnable {
 
         @Override
         public void run() {
             ImageView imageView = mSoftReferenceImageView.get();
-            if (!mShouldRun || imageView == null) {
+            if (null == imageView) {
                 mIsRunning = false;
-                if (mOnAnimationStoppedListener != null) {
-                    mOnAnimationStoppedListener.onAnimationStopped();
-                }
                 return;
             }
-            mIsRunning = true;
 
-            if (imageView.isShown()) {
-                AnimationFrame frame = getNext();
-                GetImageDrawableTask task = new GetImageDrawableTask(imageView);
-                task.execute(frame.getResourceId());
-                // TODO postDelayed after onPostExecute
-                mHandler.postDelayed(this, frame.getDuration());
+            AnimationFrame frame = getNext();
+            if (null == frame) {
+                mIsRunning = false;
+                return;
             }
+
+            GetImageDrawableTask task = new GetImageDrawableTask(imageView, imageView.getResources());
+            task.execute(frame.getResourceId());
+
+            mHandler.postDelayed(this, frame.getDuration());
         }
     }
 
-    private class GetImageDrawableTask extends AsyncTask<Integer, Void, Drawable>{
+    private class GetImageDrawableTask extends AsyncTask<Integer, Void, Drawable> {
 
+        private Resources resources;
         private ImageView mImageView;
 
-        public GetImageDrawableTask(ImageView imageView) {
+        public GetImageDrawableTask(ImageView imageView, Resources resources) {
             mImageView = imageView;
+            this.resources = resources;
         }
 
-        @SuppressLint("NewApi") 
+        @SuppressLint("NewApi")
         @Override
         protected Drawable doInBackground(Integer... params) {
-        	if(Build.VERSION.SDK_INT < Build.VERSION_CODES.HONEYCOMB){
-        		return mImageView.getContext().getResources().getDrawable(params[0]);
-        	}
-        	BitmapFactory.Options options = new BitmapFactory.Options();
-			options.inMutable = true;
-			if (mRecycleBitmap != null)
-				options.inBitmap = mRecycleBitmap;
-			mRecycleBitmap = BitmapFactory.decodeResource(mImageView
-					.getContext().getResources(), params[0], options);
-			BitmapDrawable drawable = new BitmapDrawable(mImageView.getContext().getResources(),mRecycleBitmap);
+            BitmapDrawable drawable = null;
+            try {
+                BitmapFactory.Options options = new BitmapFactory.Options();
+                options.inMutable = true;
+                if (mRecycleBitmap != null){
+                    options.inBitmap = mRecycleBitmap;
+                }
+                options.inSampleSize = 1;
+                mRecycleBitmap = BitmapFactory.decodeResource(resources, params[0], options);
+                drawable = new BitmapDrawable(resources, mRecycleBitmap);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
             return drawable;
         }
 
         @Override
         protected void onPostExecute(Drawable result) {
-            super.onPostExecute(result);
-            if(result!=null) mImageView.setImageDrawable(result);
-            if (mOnAnimationFrameChangedListener != null)
-                mOnAnimationFrameChangedListener.onAnimationFrameChanged(mIndex);
+            if(null != result) mImageView.setImageDrawable(result);
         }
-
     }
 }

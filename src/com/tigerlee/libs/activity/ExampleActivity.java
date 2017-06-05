@@ -24,14 +24,13 @@ public class ExampleActivity extends Activity {
 		ImageView imageView = (ImageView) findViewById(R.id.imageview);
 		mFasterAnimationsContainer = FasterAnimationsContainer
 				.getInstance(imageView);
-		mFasterAnimationsContainer.addAllFrames(IMAGE_RESOURCES,
-				ANIMATION_INTERVAL);
-		mFasterAnimationsContainer.start();
+		mFasterAnimationsContainer.init(IMAGE_RESOURCES,
+				ANIMATION_INTERVAL).start();
 	}
 
-	@Override
-	protected void onDestroy() {
-		super.onDestroy();
-		mFasterAnimationsContainer.stop();
-	}
+//	@Override
+//	protected void onDestroy() {
+//		super.onDestroy();
+//		mFasterAnimationsContainer.stop();
+//	}
 }
